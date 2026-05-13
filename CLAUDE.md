@@ -10,7 +10,7 @@ MyAirWatch is a lakehouse-style data pipeline for Malaysia air quality analytics
 
 The project follows a medallion architecture (bronze → silver → gold) with the following layers:
 
-```
+```text
 data/           → Storage layers (bronze/silver/gold in Parquet format)
 docs/           → Documentation and architecture decisions
 notebooks/      → Jupyter exploration and experimentation
@@ -59,7 +59,7 @@ source .venv/bin/activate
 
 Create a `.env` file based on `.env.example`:
 
-```
+```text
 OPENAQ_API_KEY=your_key_from_explore_openaq_org
 OPENDOSM_API_KEY=your_key_if_needed
 ```
