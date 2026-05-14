@@ -142,6 +142,23 @@ myairwatch/
 | Version Control      | Git + GitHub         |
 | Containerization     | Docker Compose       |
 
+### Design Decisions
+
+1. **PySpark** = The Raw -> Structured Processing Engine
+
+    * handles raw processing and scales to big data processing
+    * understand file format natively
+    * handle malformed records
+    * partition output parquet using `df.write.partitionBy("year", "month")`
+
+2. **Data Build Tools (dbt)** = The Warehouse Modelling Engine
+
+    * data modelling
+    * data lineage
+    * testing & validation
+    * documentation
+    * business logic organisation
+
 ## Pipeline stages
 
 ## How to run
