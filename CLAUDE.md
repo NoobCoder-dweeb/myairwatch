@@ -2,6 +2,159 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 🧠 Workflow Orchestration
+
+### 1. Plan Node Default
+
+- Enter **plan mode** for ANY non-trivial task (3+ steps or architectural decisions)
+- If something goes sideways, **STOP and re-plan immediately** — don't keep pushing
+- Use plan mode for **verification steps**, not just building
+- Write detailed specs upfront to reduce ambiguity
+- Never start implementation without a written plan in `tasks/todo.md`
+
+### 2. Subagent Strategy
+
+- Use subagents **liberally** to keep the main context window clean
+- Offload research, exploration, and parallel analysis to subagents
+- For complex problems, throw more compute at it via subagents
+- One task per subagent for focused execution
+
+### 3. Self-Improvement Loop
+
+- After **ANY correction** from the user: update `tasks/lessons.md` with the pattern
+- Write rules for yourself that prevent the same mistake
+- Ruthlessly iterate on these lessons until mistake rate drops
+- Review `tasks/lessons.md` at session start for every relevant project
+
+### 4. Verification Before Done
+
+- **Never mark a task complete without proving it works**
+- Diff behaviour between `main` and your changes when relevant
+- Ask yourself: *"Would a staff engineer approve this?"*
+- Run tests, check logs, demonstrate correctness before closing the task
+
+### 5. Demand Elegance (Balanced)
+
+- For non-trivial changes: pause and ask *"Is there a more elegant way?"*
+- If a fix feels hacky: *"Knowing everything I know now, implement the elegant solution"*
+- Skip this for simple, obvious fixes — don't over-engineer
+- Challenge your own work before presenting it
+
+### 6. Autonomous Bug Fixing
+
+- When given a bug report: **just fix it** — don't ask for hand-holding
+- Point at logs, errors, failing tests — then resolve them
+- Zero context-switching required from the user
+- Go fix failing CI tests without being told how
+
+---
+
+## ✅ Task Management Protocol
+
+| Step | Action | Where |
+| ------ | -------- | -------- |
+| 1 | **Plan First** — write plan with checkable items | `tasks/todo.md` |
+| 2 | **Verify Plan** — check in before starting implementation | (user confirmation) |
+| 3 | **Track Progress** — mark items complete as you go | `tasks/todo.md` |
+| 4 | **Explain Changes** — high-level summary at each step | inline comments |
+| 5 | **Document Results** — add review section after completion | `tasks/todo.md` |
+| 6 | **Capture Lessons** — update after any correction | `tasks/lessons.md` |
+
+### `tasks/todo.md` format
+
+```markdown
+## Plan: [Task Name]
+- [ ] Step 1 — description
+- [ ] Step 2 — description
+- [x] Step 3 — DONE
+
+## Review
+- What worked: ...
+- What was tricky: ...
+- Lessons learned: ...
+```
+
+### `tasks/lessons.md` format
+
+```markdown
+## Lesson [N] — [Date]
+**Mistake:** What went wrong  
+**Root Cause:** Why it happened  
+**Rule:** Never do X; always do Y instead  
+**Pattern:** Code or logic snippet showing the fix
+```
+
+---
+
+## 🏗️ Core Principles
+
+| Principle | Rule |
+| ----------- | ------ |
+| **Simplicity First** | Make every change as simple as possible. Impact minimal code. |
+| **No Laziness** | Find root causes. No temporary fixes. Senior developer standards. |
+| **Minimal Impact** | Changes should only touch what's necessary. Avoid introducing bugs. |
+| **Prove It Works** | No task is done until tests pass and correctness is demonstrated. |
+| **Leave It Better** | Every file you touch should be cleaner than you found it. |
+
+---
+
+## 🔍 Code Quality Gates
+
+Before marking **any** task complete, run this checklist:
+
+```text
+[ ] Tests pass locally
+[ ] No new linting errors introduced
+[ ] Edge cases considered and handled
+[ ] Error messages are actionable
+[ ] No hardcoded secrets or environment values
+[ ] Logging is sufficient to debug without a debugger
+[ ] "Staff engineer approval" gut check passed
+```
+
+---
+
+## 📁 Project File Conventions
+
+```text
+tasks/
+  todo.md          ← active plan + progress tracking
+  lessons.md       ← self-improvement log
+  decisions.md     ← architectural decision records (ADRs)
+src/               ← application code
+tests/             ← test suite (mirrors src/ structure)
+docs/              ← human-readable documentation
+CLAUDE.md          ← this file (project root)
+```
+
+---
+
+## ⚠️ Guardrails
+
+- **Never delete** `tasks/lessons.md` — it is institutional memory
+- **Never skip** plan mode because a task "seems simple"
+- **Never assume** a fix works without running it
+- **Never leave** a half-broken state — always restore to working before stopping
+- **Never ignore** a failing test — fix it or explicitly document why it's skipped
+
+---
+
+## 🚀 Session Startup Checklist
+
+When starting a new session on an existing project:
+
+```text
+1. Read CLAUDE.md (this file)
+2. Read tasks/lessons.md — absorb all past lessons
+3. Read tasks/todo.md — understand current state
+4. Confirm scope with user before writing any code
+5. Begin plan mode for the session's task
+```
+
+---
+
+*This file is source-controlled. Update it when project conventions evolve.*
+
 ## Project Overview
 
 MyAirWatch is a lakehouse-style data pipeline for Malaysia air quality analytics. It aggregates air quality data from OpenDOSM and OpenAQ APIs, processes it using local PySpark, stores in GCS-compatible local storage, and presents analytics via a Streamlit dashboard connected to BigQuery Sandbox.
