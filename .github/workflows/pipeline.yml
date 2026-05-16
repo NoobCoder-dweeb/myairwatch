@@ -1,0 +1,60 @@
+name: ETL Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  workflow_dispatch:
+    inputs:
+      source:
+        description: 'Data source to process'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - openaq
+          - opendosm
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run ETL Pipeline
+        env:
+          OPENAQ_API_KEY: ${{ secrets.OPENAQ_API_KEY }}
+          OPENDOSM_API_KEY: ${{ secrets.OPENDOSM_API_KEY }}
+        run: |
+          if [ "${{ github.event.inputs.source }}" != "" ]; then
+            uv run pipeline.py --source ${{ github.event.inputs.source }}
+          else
+            uv run pipeline.py
+          fi
+
+      - name: Upload bronze layer artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: bronze-data
+          path: data/bronze/
+          retention-days: 7
+
+      - name: Upload silver layer artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: silver-data
+          path: data/silver/
+          retention-days: 7
