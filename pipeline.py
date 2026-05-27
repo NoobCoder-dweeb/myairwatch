@@ -34,17 +34,21 @@ from src.utils.logger import DEFAULT_LOGGER as logger
 
 def run_opendosm_extract() -> Path:
     """Extract data from OpenDOSM API."""
-    logger.info("Starting OpenDOSM extraction...")
+    logger.info("Starting OpenDOSM extraction")
     filepath = extract_opendosm()
-    logger.info(f"OpenDOSM extraction complete: {filepath}")
+    logger.info("OpenDOSM extraction complete: output_path=%s", filepath)
     return filepath
 
 
 def run_openaq_extract() -> tuple[Path, Path]:
     """Extract data from OpenAQ API."""
-    logger.info("Starting OpenAQ extraction...")
+    logger.info("Starting OpenAQ extraction")
     locations_file, measurements_file = extract_openaq()
-    logger.info(f"OpenAQ extraction complete: {locations_file}, {measurements_file}")
+    logger.info(
+        "OpenAQ extraction complete: locations_path=%s measurements_path=%s",
+        locations_file,
+        measurements_file,
+    )
     return locations_file, measurements_file
 
 
@@ -62,10 +66,10 @@ def run_opendosm_ingest():
         raise FileNotFoundError(f"No JSON files found in {opendosm_dir}")
 
     latest_file = max(json_files, key=lambda p: p.stat().st_mtime)
-    logger.info(f"Ingesting OpenDOSM from {latest_file}...")
+    logger.info("Starting OpenDOSM ingestion: input_path=%s", latest_file)
 
     df = ingest_opendosm_bronze_to_silver(latest_file, silver_path)
-    logger.info(f"OpenDOSM ingestion complete: {df.count()} records")
+    logger.info("OpenDOSM ingestion complete")
     return df
 
 
@@ -83,23 +87,25 @@ def run_openaq_ingest():
         raise FileNotFoundError(f"No measurement JSON files found in {openaq_dir}")
 
     latest_file = max(json_files, key=lambda p: p.stat().st_mtime)
-    logger.info(f"Ingesting OpenAQ from {latest_file}...")
+    logger.info("Starting OpenAQ ingestion: input_path=%s", latest_file)
 
     df = ingest_openaq_bronze_to_silver(latest_file, silver_path)
-    logger.info(f"OpenAQ ingestion complete: {df.count()} records")
+    logger.info("OpenAQ ingestion complete")
     return df
 
 
 def run_full_pipeline(args: argparse.Namespace):
     """Execute the full ETL pipeline."""
-    logger.info("=" * 60)
-    logger.info("Starting full pipeline execution")
-    logger.info("=" * 60)
+    logger.info(
+        "Starting pipeline execution: source=%s skip_extract=%s skip_ingest=%s",
+        args.source,
+        args.skip_extract,
+        args.skip_ingest,
+    )
 
     # Phase 1: Extraction
     if not args.skip_extract:
-        logger.info("[Phase 1/2] Extraction")
-        logger.info("-" * 40)
+        logger.info("Starting extraction phase")
 
         if args.source in ("all", "opendosm"):
             run_opendosm_extract()
@@ -113,8 +119,7 @@ def run_full_pipeline(args: argparse.Namespace):
 
     # Phase 2: Ingestion (bronze -> silver)
     if not args.skip_ingest:
-        logger.info("[Phase 2/2] Ingestion (Bronze -> Silver)")
-        logger.info("-" * 40)
+        logger.info("Starting ingestion phase")
 
         if args.source in ("all", "opendosm"):
             run_opendosm_ingest()
@@ -126,9 +131,7 @@ def run_full_pipeline(args: argparse.Namespace):
     else:
         logger.info("Skipping ingestion phase")
 
-    logger.info("=" * 60)
-    logger.info("Pipeline execution complete!")
-    logger.info("=" * 60)
+    logger.info("Pipeline execution complete")
 
 
 def main():
@@ -163,16 +166,18 @@ def main():
     args = parser.parse_args()
 
     if args.dry_run:
-        print("Dry run - would execute:")
-        print(f"  Source: {args.source}")
-        print(f"  Skip extract: {args.skip_extract}")
-        print(f"  Skip ingest: {args.skip_ingest}")
+        logger.info(
+            "Dry run complete: source=%s skip_extract=%s skip_ingest=%s",
+            args.source,
+            args.skip_extract,
+            args.skip_ingest,
+        )
         return
 
     try:
         run_full_pipeline(args)
     except Exception as e:
-        logger.error(f"Pipeline failed: {e}")
+        logger.error("Pipeline execution failed: %s", e)
         sys.exit(1)
 
 

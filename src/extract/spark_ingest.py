@@ -8,6 +8,7 @@ from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 
 from ..utils.config import get_data_bronze_path, get_data_silver_path
+from ..utils.logger import DEFAULT_LOGGER as logger
 
 
 def create_spark_session(app_name: str = "AirQualityIngestion") -> SparkSession:
@@ -28,11 +29,16 @@ def read_json_to_df(
     path: str | Path,
     schema: Optional[Any] = None,
 ) -> DataFrame:
-    """Read JSON files into Spark DataFrame."""
+    """Read JSON files into Spark DataFrame.
+
+    Bronze extraction writes pretty-printed JSON arrays, so Spark needs
+    multiLine mode instead of its default newline-delimited JSON mode.
+    """
     path_str = str(path)
+    reader = spark.read.option("multiLine", "true")
     if schema:
-        return spark.read.schema(schema).json(path_str)
-    return spark.read.json(path_str)
+        reader = reader.schema(schema)
+    return reader.json(path_str)
 
 
 def write_partitioned_df(
@@ -62,8 +68,14 @@ def ingest_bronze_to_silver(
 
     try:
         df = read_json_to_df(spark, bronze_path)
+        record_count = df.count()
 
-        print(f"Loaded {df.count()} records from bronze layer")
+        logger.info(
+            "Loaded bronze records: source=%s input_path=%s record_count=%s",
+            source,
+            bronze_path,
+            record_count,
+        )
 
         if partition_by_date:
             if "date" in df.columns:
@@ -95,7 +107,11 @@ def ingest_bronze_to_silver(
         else:
             df.write.mode("overwrite").json(str(silver_path))
 
-        print(f"Silver layer written to {silver_path}")
+        logger.info(
+            "Silver layer write complete: source=%s output_path=%s",
+            source,
+            silver_path,
+        )
         return df
 
     finally:
@@ -133,12 +149,12 @@ if __name__ == "__main__":
         json_files = list(opendosm_dir.glob("*.json"))
         if json_files:
             latest_file = max(json_files, key=lambda p: p.stat().st_mtime)
-            print(f"Ingesting OpenDOSM from {latest_file}")
+            logger.info("Starting OpenDOSM ingestion: input_path=%s", latest_file)
             ingest_opendosm_bronze_to_silver(latest_file, silver)
 
     if openaq_dir.exists():
         json_files = list(openaq_dir.glob("*_measurements_*.json"))
         if json_files:
             latest_file = max(json_files, key=lambda p: p.stat().st_mtime)
-            print(f"Ingesting OpenAQ from {latest_file}")
+            logger.info("Starting OpenAQ ingestion: input_path=%s", latest_file)
             ingest_openaq_bronze_to_silver(latest_file, silver)

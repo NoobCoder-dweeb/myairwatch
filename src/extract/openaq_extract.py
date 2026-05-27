@@ -1,37 +1,27 @@
 """Extract air quality data from OpenAQ API for Malaysia."""
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 import requests
 
 from ..utils.config import get_data_bronze_path, get_openaq_api_key, get_openaq_base_url
-from ..utils.constants import JSON, OPENAQ_COUNTRY_CODE, DEFAULT_PAGE_SIZE, REQUEST_TIMEOUT
-from ..utils.date_helpers import get_timestamp
-from ..utils.path_helpers import ensure_dir
+from ..utils.constants import JSON, DEFAULT_PAGE_SIZE, REQUEST_TIMEOUT
 from ..utils.logger import DEFAULT_LOGGER as logger
 
+# Malaysia location IDs from explore.openaq.org
+MALAYSIA_LOCATION_IDS = [
+    6289999,  # Sejati Residences Cyberjaya
+    3400978,  # Setia Eco Park
+    3331918,  # Taman Tun Dr. Ismail
+    5893160,  # KLCC
+    5894144,  # Bukit Bintang
+]
 
-def fetch_openaq_locations(
-    base_url: str = get_openaq_base_url(),
-    api_key: str = "",
-    country: str = "MY",
-    limit: int = 1000,
-    offset: int = 0,
-) -> dict[str, Any]:
-    """Fetch monitoring locations in Malaysia from OpenAQ API."""
-    url = f"{base_url}/locations"
-    params = {
-        "country": country,
-        "limit": limit,
-        "offset": offset,
-    }
-    headers = {"X-API-Key": api_key} if api_key else {}
-    response = requests.get(url, params=params, headers=headers, timeout=30)
-    response.raise_for_status()
-    return response.json()
+# Default to last 6 months
+DEFAULT_MONTHS_BACK = 6
 
 
 def fetch_location_measurements(
@@ -39,123 +29,125 @@ def fetch_location_measurements(
     base_url: str = get_openaq_base_url(),
     api_key: str = "",
     limit: int = 1000,
-) -> dict[str, Any]:
+    date_from: str | None = None,
+    date_to: str | None = None,
+) -> JSON:
     """Fetch measurements for a specific location."""
     url = f"{base_url}/locations/{location_id}"
-    params = {"limit": limit}
+    params: JSON = {"limit": limit}
+    if date_from:
+        params["date_from"] = date_from
+    if date_to:
+        params["date_to"] = date_to
     headers = {"X-API-Key": api_key} if api_key else {}
     response = requests.get(url, params=params, headers=headers, timeout=30)
     response.raise_for_status()
     return response.json()
 
 
-def fetch_all_openaq_locations(
-    base_url: str = get_openaq_base_url(),
-    api_key: str = "",
-) -> list[dict[str, Any]]:
-    """Fetch all monitoring locations in Malaysia using pagination."""
-    all_locations = []
-    limit = 1000
-    offset = 0
-
-    while True:
-        data = fetch_openaq_locations(
-            base_url=base_url,
-            api_key=api_key,
-            limit=limit,
-            offset=offset,
-        )
-
-        if isinstance(data, dict) and "results" in data:
-            records = data["results"]
-        elif isinstance(data, list):
-            records = data
-        else:
-            records = [data] if data else []
-
-        if not records:
-            break
-
-        all_locations.extend(records)
-        print(f"Fetched {len(records)} locations (total: {len(all_locations)})")
-
-        if len(records) < limit:
-            break
-
-        offset += limit
-
-    return all_locations
-
-
 def fetch_all_measurements(
-    locations: list[dict[str, Any]],
+    location_ids: list[int],
     base_url: str = get_openaq_base_url(),
     api_key: str = "",
-) -> list[dict[str, Any]]:
-    """Fetch measurements for all locations."""
+    date_from: str | None = None,
+    date_to: str | None = None,
+) -> list[JSON]:
+    """Fetch measurements for all specified location IDs."""
     all_measurements = []
 
-    for location in locations:
-        location_id = location.get("id")
-        if not location_id:
-            continue
-
+    for location_id in location_ids:
         try:
             data = fetch_location_measurements(
                 location_id,
                 base_url=base_url,
                 api_key=api_key,
                 limit=1000,
+                date_from=date_from,
+                date_to=date_to,
             )
             if data:
                 data["location_id"] = location_id
-                data["location_name"] = location.get("location", "unknown")
                 all_measurements.append(data)
-                print(f"Fetched measurements for location {location_id}")
+                logger.info("Fetched OpenAQ measurements: location_id=%s", location_id)
         except Exception as e:
-            print(f"Error fetching measurements for location {location_id}: {e}")
+            logger.warning(
+                "OpenAQ measurement fetch failed: location_id=%s error=%s",
+                location_id,
+                e,
+            )
             continue
 
     return all_measurements
 
 
 def save_to_bronze(
-    locations: list[dict[str, Any]],
-    measurements: list[dict[str, Any]],
+    measurements: list[JSON],
     output_dir: Path,
-) -> tuple[Path, Path]:
+) -> Path:
     """Save extracted data as JSON to bronze layer."""
     output_dir.mkdir(parents=True, exist_ok=True)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    locations_file = output_dir / f"openaq_locations_{timestamp}.json"
-    with open(locations_file, "w", encoding="utf-8") as f:
-        json.dump(locations, f, ensure_ascii=False, indent=2)
-    print(f"Saved {len(locations)} locations to {locations_file}")
-
     measurements_file = output_dir / f"openaq_measurements_{timestamp}.json"
     with open(measurements_file, "w", encoding="utf-8") as f:
         json.dump(measurements, f, ensure_ascii=False, indent=2)
-    print(f"Saved {len(measurements)} measurements to {measurements_file}")
+    logger.info(
+        "Saved OpenAQ bronze measurements: record_count=%s output_path=%s",
+        len(measurements),
+        measurements_file,
+    )
 
-    return locations_file, measurements_file
+    return measurements_file
 
 
-def extract_openaq() -> tuple[Path, Path]:
-    """Main extraction function for OpenAQ data."""
+def get_date_range(months_back: int = DEFAULT_MONTHS_BACK) -> tuple[str, str]:
+    """Calculate date range for the last N months."""
+    date_to = datetime.now().strftime("%Y-%m-%dT%H:%M:%S+00:00")
+    date_from = (datetime.now() - timedelta(days=months_back * 30)).strftime(
+        "%Y-%m-%dT%H:%M:%S+00:00"
+    )
+    return date_from, date_to
+
+
+def extract_openaq(months_back: int = DEFAULT_MONTHS_BACK) -> tuple[Path | None, Path]:
+    """Main extraction function for OpenAQ data.
+
+    Args:
+        months_back: Number of months of historical data to fetch (default: 6)
+
+    Returns:
+        Tuple of (locations_file, measurements_file). locations_file is None since
+        we fetch directly from location IDs without a separate locations file.
+    """
     bronze_path = get_data_bronze_path()
     openaq_dir = bronze_path / "openaq"
 
     base_url = get_openaq_base_url()
     api_key = get_openaq_api_key()
 
-    locations = fetch_all_openaq_locations(base_url=base_url, api_key=api_key)
-    measurements = fetch_all_measurements(locations, base_url=base_url, api_key=api_key)
+    # Calculate date range for last N months
+    date_from, date_to = get_date_range(months_back)
+    logger.info(
+        "Fetching OpenAQ measurements: date_from=%s date_to=%s location_count=%s",
+        date_from,
+        date_to,
+        len(MALAYSIA_LOCATION_IDS),
+    )
 
-    locations_file, measurements_file = save_to_bronze(locations, measurements, openaq_dir)
+    # Fetch measurements for all Malaysia location IDs
+    measurements = fetch_all_measurements(
+        MALAYSIA_LOCATION_IDS,
+        base_url=base_url,
+        api_key=api_key,
+        date_from=date_from,
+        date_to=date_to,
+    )
 
-    return locations_file, measurements_file
+    measurements_file = save_to_bronze(measurements, openaq_dir)
+
+    # Return tuple to match pipeline expectations (locations_file is None)
+    return None, measurements_file
 
 
 if __name__ == "__main__":

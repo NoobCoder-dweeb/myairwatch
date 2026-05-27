@@ -86,7 +86,7 @@ class IngestToSilverOperator(BaseOperator):
         else:
             raise ValueError(f"Unknown source: {self.source}")
 
-        self.log.info(f"Ingestion complete: {df.count()} records")
+        self.log.info("Ingestion complete")
         return True
 
 
