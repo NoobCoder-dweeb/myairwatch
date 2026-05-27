@@ -1,14 +1,14 @@
 """PySpark ingestion utilities for air quality data."""
 
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
 from pyspark.sql import DataFrame, SparkSession
-from pyspark.sql import functions as F
 
 from ..utils.config import get_data_bronze_path, get_data_silver_path
 from ..utils.logger import DEFAULT_LOGGER as logger
+from ..transform.clean_air_quality import transform_air_quality_df
+from ..transform.partition_writer import write_silver_partitioned
 
 
 def create_spark_session(app_name: str = "AirQualityIngestion") -> SparkSession:
@@ -18,6 +18,7 @@ def create_spark_session(app_name: str = "AirQualityIngestion") -> SparkSession:
         SparkSession.builder.appName(app_name)
         .config("spark.sql.adaptive.enabled", "true")
         .config("spark.sql.adaptive.coalescePartitions.enabled", "true")
+        .config("spark.sql.sources.partitionOverwriteMode", "dynamic")
         .getOrCreate()
     )
     spark.sparkContext.setLogLevel("WARN")  # set log level
@@ -61,51 +62,23 @@ def ingest_bronze_to_silver(
     bronze_path: str | Path,
     silver_path: str | Path,
     source: str = "opendosm",
-    partition_by_date: bool = True,
 ) -> DataFrame:
-    """Ingest data from bronze to silver layer with optional partitioning."""
+    """Clean and ingest bronze data to the silver layer."""
     spark = create_spark_session(f"Ingest_{source}")
 
     try:
-        df = read_json_to_df(spark, bronze_path)
+        bronze_df = read_json_to_df(spark, bronze_path)
+        df = transform_air_quality_df(bronze_df, source=source)
         record_count = df.count()
 
         logger.info(
-            "Loaded bronze records: source=%s input_path=%s record_count=%s",
+            "Cleaned bronze records for silver: source=%s input_path=%s record_count=%s",
             source,
             bronze_path,
             record_count,
         )
 
-        if partition_by_date:
-            if "date" in df.columns:
-                df = df.withColumn("year", F.year(F.col("date")))
-                df = df.withColumn("month", F.month(F.col("date")))
-                df = df.withColumn("day", F.dayofmonth(F.col("date")))
-
-                output = str(silver_path)
-                write_partitioned_df(
-                    df,
-                    output,
-                    partition_cols=["year", "month", "day"],
-                )
-            else:
-                df = df.withColumn("ingestion_year", F.year(F.current_timestamp()))
-                df = df.withColumn("ingestion_month", F.month(F.current_timestamp()))
-                df = df.withColumn("ingestion_day", F.dayofmonth(F.current_timestamp()))
-
-                output = str(silver_path)
-                write_partitioned_df(
-                    df,
-                    output,
-                    partition_cols=[
-                        "ingestion_year",
-                        "ingestion_month",
-                        "ingestion_day",
-                    ],
-                )
-        else:
-            df.write.mode("overwrite").json(str(silver_path))
+        write_silver_partitioned(df, silver_path)
 
         logger.info(
             "Silver layer write complete: source=%s output_path=%s",
