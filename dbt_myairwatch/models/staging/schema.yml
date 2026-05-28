@@ -1,0 +1,48 @@
+version: 2
+
+sources:
+  - name: myairwatch_staging
+    database: "{{ target.project }}"
+    schema: myairwatch_staging
+    tables:
+      - name: air_quality_readings
+        columns:
+          - name: source
+            tests:
+              - not_null
+          - name: pollutant
+            tests:
+              - not_null
+          - name: observed_at
+            tests:
+              - not_null
+          - name: observed_date
+            tests:
+              - not_null
+
+models:
+  - name: stg_opendosm
+    columns:
+      - name: source
+        tests:
+          - accepted_values:
+              values: ['opendosm']
+      - name: pollutant
+        tests:
+          - not_null
+      - name: observed_date
+        tests:
+          - not_null
+
+  - name: stg_openaq
+    columns:
+      - name: source
+        tests:
+          - accepted_values:
+              values: ['openaq']
+      - name: pollutant
+        tests:
+          - not_null
+      - name: observed_date
+        tests:
+          - not_null

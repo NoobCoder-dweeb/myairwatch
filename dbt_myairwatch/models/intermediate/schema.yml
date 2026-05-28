@@ -1,0 +1,20 @@
+version: 2
+
+models:
+  - name: int_air_quality_enriched
+    columns:
+      - name: reading_id
+        tests:
+          - not_null
+          - unique
+      - name: source
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['opendosm', 'openaq']
+      - name: pollutant
+        tests:
+          - not_null
+      - name: observed_date
+        tests:
+          - not_null

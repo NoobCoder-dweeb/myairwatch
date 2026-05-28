@@ -1,0 +1,56 @@
+version: 2
+
+models:
+  - name: fact_air_quality
+    columns:
+      - name: reading_id
+        tests:
+          - not_null
+          - unique
+      - name: source
+        tests:
+          - not_null
+      - name: pollutant
+        tests:
+          - not_null
+      - name: date_day
+        tests:
+          - not_null
+
+  - name: dim_date
+    columns:
+      - name: date_day
+        tests:
+          - not_null
+          - unique
+
+  - name: dim_location
+    columns:
+      - name: location_id
+        tests:
+          - not_null
+          - unique
+
+  - name: dim_pollutant
+    columns:
+      - name: pollutant
+        tests:
+          - not_null
+
+  - name: mart_health_risk
+    columns:
+      - name: pollutant
+        tests:
+          - not_null
+
+  - name: mart_state_comparison
+    columns:
+      - name: state
+        tests:
+          - not_null
+
+  - name: mark_pollution_hotspots
+    columns:
+      - name: state
+        tests:
+          - not_null
