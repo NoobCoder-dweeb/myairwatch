@@ -10,7 +10,10 @@ models:
   myairwatch:
     staging:
       +materialized: view
+      +schema: "{{ env_var('BQ_STAGING_DATASET_ID', 'myairwatch_staging') }}"
     intermediate:
       +materialized: view
+      +schema: "{{ env_var('BQ_MARTS_DATASET_ID', 'myairwatch_marts') }}"
     marts:
       +materialized: table
+      +schema: "{{ env_var('BQ_MARTS_DATASET_ID', 'myairwatch_marts') }}"

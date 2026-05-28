@@ -33,6 +33,29 @@ def get_data_silver_path() -> Path:
     return Path(path)
 
 
+def get_gcp_project_id() -> str:
+    """Get the Google Cloud project id from environment variables."""
+    project_id = os.getenv("GCP_PROJECT_ID")
+    if not project_id:
+        raise ValueError("GCP_PROJECT_ID not set in .env file")
+    return project_id
+
+
+def get_bigquery_staging_dataset_id() -> str:
+    """Get the BigQuery staging dataset name."""
+    return os.getenv("BQ_STAGING_DATASET_ID", "myairwatch_staging")
+
+
+def get_bigquery_marts_dataset_id() -> str:
+    """Get the BigQuery marts dataset name."""
+    return os.getenv("BQ_MARTS_DATASET_ID", "myairwatch_marts")
+
+
+def get_gcp_location() -> str | None:
+    """Get the Google Cloud location from environment variables."""
+    return os.getenv("GCP_LOCATION")
+
+
 def get_openaq_base_url() -> str:
     """Get OpenAQ base URL from environment variables."""
     return os.getenv("OPENAQ_BASE_URL", "https://api.openaq.org/v3")

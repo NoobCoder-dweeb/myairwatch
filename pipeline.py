@@ -28,7 +28,14 @@ from src.extract.spark_ingest import (
     ingest_openaq_bronze_to_silver,
     ingest_opendosm_bronze_to_silver,
 )
-from src.utils.config import get_data_bronze_path, get_data_silver_path
+from src.load.load_to_bigquery import BigQueryLoadConfig, load_silver_to_bigquery
+from src.utils.config import (
+    get_data_bronze_path,
+    get_data_silver_path,
+    get_gcp_project_id,
+    get_bigquery_staging_dataset_id,
+    get_gcp_location,
+)
 from src.utils.logger import DEFAULT_LOGGER as logger
 
 
@@ -40,7 +47,7 @@ def run_opendosm_extract() -> Path:
     return filepath
 
 
-def run_openaq_extract() -> tuple[ Path | None, Path]:
+def run_openaq_extract() -> tuple[Path | None, Path]:
     """Extract data from OpenAQ API."""
     logger.info("Starting OpenAQ extraction")
     locations_file, measurements_file = extract_openaq()
@@ -94,13 +101,39 @@ def run_openaq_ingest():
     return df
 
 
+def run_bigquery_load(args: argparse.Namespace):
+    """Load silver data into BigQuery and run dbt warehouse models."""
+    project_id = args.project_id or get_gcp_project_id()
+    dataset_id = args.dataset_id or get_bigquery_staging_dataset_id()
+    location = args.location or get_gcp_location()
+    silver_path = get_data_silver_path()
+
+    logger.info(
+        "Starting BigQuery load: project=%s dataset=%s silver_path=%s",
+        project_id,
+        dataset_id,
+        silver_path,
+    )
+
+    config = BigQueryLoadConfig(
+        project_id=project_id,
+        dataset_id=dataset_id,
+        location=location,
+        dbt_project_dir=args.dbt_project_dir,
+        dbt_profiles_dir=args.dbt_profiles_dir,
+    )
+    load_silver_to_bigquery(silver_path, config)
+    logger.info("BigQuery load phase complete")
+
+
 def run_full_pipeline(args: argparse.Namespace):
     """Execute the full ETL pipeline."""
     logger.info(
-        "Starting pipeline execution: source=%s skip_extract=%s skip_ingest=%s",
+        "Starting pipeline execution: source=%s skip_extract=%s skip_ingest=%s skip_load=%s",
         args.source,
         args.skip_extract,
         args.skip_ingest,
+        args.skip_load,
     )
 
     # Phase 1: Extraction
@@ -131,6 +164,13 @@ def run_full_pipeline(args: argparse.Namespace):
     else:
         logger.info("Skipping ingestion phase")
 
+    # Phase 3: Load into BigQuery
+    if not args.skip_load:
+        logger.info("Starting BigQuery load phase")
+        run_bigquery_load(args)
+    else:
+        logger.info("Skipping BigQuery load phase")
+
     logger.info("Pipeline execution complete")
 
 
@@ -156,6 +196,37 @@ def main():
         "--skip-ingest",
         action="store_true",
         help="Skip ingestion phase (bronze -> silver)",
+    )
+    parser.add_argument(
+        "--skip-load",
+        action="store_true",
+        help="Skip BigQuery load phase",
+    )
+    parser.add_argument(
+        "--project-id",
+        help="Google Cloud project ID for BigQuery load",
+    )
+    parser.add_argument(
+        "--dataset-id",
+        default=None,
+        help="BigQuery dataset for silver staging data (default: myairwatch_staging)",
+    )
+    parser.add_argument(
+        "--location",
+        default=None,
+        help="Google Cloud location for BigQuery client",
+    )
+    parser.add_argument(
+        "--dbt-project-dir",
+        type=Path,
+        default=Path(__file__).resolve().parent / "dbt_myairwatch",
+        help="dbt project directory",
+    )
+    parser.add_argument(
+        "--dbt-profiles-dir",
+        type=Path,
+        default=None,
+        help="Optional dbt profiles directory",
     )
     parser.add_argument(
         "--dry-run",

@@ -110,7 +110,9 @@ def test_load_silver_to_bigquery_runs_merge_checks_cleanup_and_dbt(tmp_path):
         runner=fake_runner,
     )
 
-    assert result.target_table_id == "test-project.myairwatch_staging.air_quality_readings"
+    assert (
+        result.target_table_id == "test-project.myairwatch_staging.air_quality_readings"
+    )
     assert result.local_row_count == 1
     assert [event[0] for event in client.events] == [
         "load",
@@ -193,6 +195,43 @@ def test_dbt_project_contains_models_and_tests():
     assert "sources:" in staging_schema
     assert "air_quality_readings" in staging_schema
     assert "not_null" in staging_schema
-    assert "{{ source('myairwatch_staging', 'air_quality_readings') }}" in (
-        dbt_dir / "models" / "staging" / "stg_opendosm.sql"
-    ).read_text()
+    assert (
+        "{{ source('myairwatch_staging', 'air_quality_readings') }}"
+        in (dbt_dir / "models" / "staging" / "stg_opendosm.sql").read_text()
+    )
+
+
+def test_pipeline_loads_bigquery_when_enabled(monkeypatch, tmp_path):
+    import pipeline
+
+    load_calls = []
+
+    def fake_load(silver_path, config):
+        load_calls.append((silver_path, config))
+
+    monkeypatch.setattr(pipeline, "load_silver_to_bigquery", fake_load)
+    monkeypatch.setattr(pipeline, "get_data_silver_path", lambda: tmp_path)
+
+    args = type(
+        "Args",
+        (),
+        {
+            "source": "all",
+            "skip_extract": True,
+            "skip_ingest": True,
+            "skip_load": False,
+            "project_id": "test-project",
+            "dataset_id": "myairwatch_staging",
+            "location": None,
+            "dbt_project_dir": tmp_path / "dbt_myairwatch",
+            "dbt_profiles_dir": None,
+        },
+    )()
+
+    pipeline.run_full_pipeline(args)
+
+    assert len(load_calls) == 1
+    silver_path, config = load_calls[0]
+    assert silver_path == tmp_path
+    assert config.project_id == "test-project"
+    assert config.dataset_id == "myairwatch_staging"
