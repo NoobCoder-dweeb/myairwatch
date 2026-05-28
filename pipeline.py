@@ -40,7 +40,7 @@ def run_opendosm_extract() -> Path:
     return filepath
 
 
-def run_openaq_extract() -> tuple[Path, Path]:
+def run_openaq_extract() -> tuple[ Path | None, Path]:
     """Extract data from OpenAQ API."""
     logger.info("Starting OpenAQ extraction")
     locations_file, measurements_file = extract_openaq()

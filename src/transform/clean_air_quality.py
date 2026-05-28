@@ -6,7 +6,6 @@ from pyspark.sql import functions as F
 from .clean_pollutants import standardize_pollutants
 from .normalise_states import normalize_state_column
 
-
 SILVER_COLUMNS = [
     "source",
     "source_location_id",
@@ -45,15 +44,18 @@ HEALTH_RISK_LABELS = [
 ]
 
 
-def parse_observed_timestamp(df: DataFrame, timestamp_col: str) -> DataFrame:
-    """Parse an input date or timestamp column into silver timestamp/date fields."""
-    parsed = F.try_to_timestamp(F.col(timestamp_col))
+def add_timestamp_columns(df: DataFrame, raw_timestamp_col: str) -> DataFrame:
+    """Parse a raw timestamp column and add derived observed_at/date/year/month/day."""
+    raw = F.col(raw_timestamp_col)
+    observed_at = F.try_to_timestamp(raw)
+    observed_date = F.to_date(observed_at)
+
     return (
-        df.withColumn("observed_at", parsed)
-        .withColumn("observed_date", F.to_date("observed_at"))
-        .withColumn("year", F.year("observed_date"))
-        .withColumn("month", F.month("observed_date"))
-        .withColumn("day", F.dayofmonth("observed_date"))
+        df.withColumn("observed_at", observed_at)
+        .withColumn("observed_date", observed_date)
+        .withColumn("year", F.year(observed_date))
+        .withColumn("month", F.month(observed_date))
+        .withColumn("day", F.dayofmonth(observed_date))
     )
 
 
@@ -105,9 +107,9 @@ def clean_opendosm_air_quality(df: DataFrame) -> DataFrame:
         F.col("pollutant").cast("string").alias("pollutant"),
         F.lit(None).cast("string").alias("unit"),
         F.col("concentration").cast("double").alias("reading_value"),
-        F.col("date").cast("string").alias("_observed_raw"),
+        F.col("date").cast("string").alias("date"),
     )
-    return clean_air_quality_frame(cleaned, source="opendosm")
+    return clean_air_quality_frame(cleaned, source="opendosm", raw_timestamp_col="date")
 
 
 def clean_openaq_air_quality(df: DataFrame) -> DataFrame:
@@ -116,15 +118,14 @@ def clean_openaq_air_quality(df: DataFrame) -> DataFrame:
     Current OpenAQ bronze files contain location/sensor metadata. Sensor rows
     are retained with null `reading_value` until measurement values are fetched.
     """
-    exploded = (
-        df.withColumn("_result", F.explode_outer("results"))
-        .withColumn("_sensor", F.explode_outer("_result.sensors"))
+    exploded = df.withColumn("_result", F.explode_outer("results")).withColumn(
+        "_sensor", F.explode_outer("_result.sensors")
     )
     cleaned = exploded.select(
         F.lit("openaq").alias("source"),
-        F.coalesce(F.col("location_id"), F.col("_result.id")).cast("string").alias(
-            "source_location_id"
-        ),
+        F.coalesce(F.col("location_id"), F.col("_result.id"))
+        .cast("string")
+        .alias("source_location_id"),
         F.col("_result.name").cast("string").alias("location_name"),
         F.col("_result.locality").cast("string").alias("state"),
         F.col("_result.country.name").cast("string").alias("country"),
@@ -133,18 +134,30 @@ def clean_openaq_air_quality(df: DataFrame) -> DataFrame:
         F.col("_sensor.parameter.name").cast("string").alias("pollutant"),
         F.col("_sensor.parameter.units").cast("string").alias("unit"),
         F.lit(None).cast("double").alias("reading_value"),
-        F.coalesce(F.col("_result.datetimeLast.utc"), F.col("_result.datetimeFirst.utc"))
+        F.coalesce(
+            F.col("_result.datetimeLast.utc"), F.col("_result.datetimeFirst.utc")
+        )
         .cast("string")
-        .alias("_observed_raw"),
+        .alias("timestamp"),
     )
-    return clean_air_quality_frame(cleaned, source="openaq")
+    return clean_air_quality_frame(
+        cleaned, source="openaq", raw_timestamp_col="timestamp"
+    )
 
 
-def clean_air_quality_frame(df: DataFrame, source: str) -> DataFrame:
-    """Apply shared silver-layer cleaning rules to a normalized raw frame."""
+def clean_air_quality_frame(
+    df: DataFrame, source: str, raw_timestamp_col: str
+) -> DataFrame:
+    """Apply shared silver-layer cleaning rules to a normalized raw frame.
+
+    Args:
+        df: Input DataFrame with raw timestamp column
+        source: Data source identifier ("opendosm" or "openaq")
+        raw_timestamp_col: Name of the raw timestamp column to parse
+    """
     cleaned = standardize_pollutants(df)
     cleaned = normalize_state_column(cleaned)
-    cleaned = parse_observed_timestamp(cleaned, "_observed_raw")
+    cleaned = add_timestamp_columns(cleaned, raw_timestamp_col)
     cleaned = add_health_risk_category(cleaned)
     cleaned = deduplicate_readings(cleaned)
     cleaned = cleaned.filter(

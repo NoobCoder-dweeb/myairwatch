@@ -61,7 +61,9 @@ def latest_bronze_file(source: str, bronze_base_path: str | Path | None = None) 
 
     files = list(source_dir.glob(pattern))
     if not files:
-        raise FileNotFoundError(f"No bronze files found for source '{source}' in {source_dir}")
+        raise FileNotFoundError(
+            f"No bronze files found for source '{source}' in {source_dir}"
+        )
     return max(files, key=lambda path: path.stat().st_mtime)
 
 
