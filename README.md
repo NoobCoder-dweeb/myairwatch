@@ -38,8 +38,9 @@ The system architecture of MyAirWatch is presented as follows:
 *Storage*:
 
 * local bronze storage
-* GCS bronze bucket
-* Silver Layer
+* local sliver storage
+* Google BigQuery staging area
+* Google BigQuery gold data mart
 
 *Purpose*:
 
